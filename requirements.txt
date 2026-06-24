@@ -1,0 +1,5 @@
+# Standard Bots Python SDK / REST API client.
+#
+# Pin the version: the API surface changes between releases, so an unpinned
+# install can break these examples on a future upgrade (see README -> Versioning).
+standardbots==2.20260617.2

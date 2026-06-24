@@ -1,0 +1,26 @@
+# Secrets / local config -- never commit your token
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json

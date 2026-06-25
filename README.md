@@ -7,6 +7,8 @@ This starter repo is the request/response counterpart to the
 discrete, high-level commands, not for tight closed-loop control. If you need streaming
 state or velocity-level control, reach for the ROS2 Realtime API instead.
 
+This repository has been written for and verified on **release/2026.01.23.124**
+
 ## Safety
 
 - The Developer API is in **beta**. Interfaces can change between releases.

@@ -93,9 +93,9 @@ python src/<name>.py [--url <robot-url> --token <token>] [--live]
 | `quickstart.py` | Connect and run a health check. Start here. | `python src/quickstart.py` |
 | `read_state.py` | Read TCP pose, joint angles, and health (read-only). | `python src/read_state.py` |
 | `move_to_pose.py` | Move the tool up a few cm. **Moves the arm.** | `python src/move_to_pose.py --up 0.05` |
-| `run_routine.py` | List, play, and monitor a saved routine. | `python src/run_routine.py --routine-id <id> --var k=v` |
+| `run_routine.py` | List, play, and monitor a saved routine. | `python src/run_routine.py` (lists ids), then `--routine-id <id>` |
 | `gripper.py` | Open/close or force-grip. **Moves the gripper.** | `python src/gripper.py --width 50 --force 20` |
-| `io_control.py` | Read I/O, optionally set pins. | `python src/io_control.py --set pin=value` |
+| `io_control.py` | Read I/O, optionally set pins. | `python src/io_control.py --set "Output 1=high"` |
 | `recover.py` | Inspect faults, optionally clear them. | `python src/recover.py --recover` |
 | `spaces.py` | List saved Spaces (waypoints) (read-only). | `python src/spaces.py` |
 | `payload.py` | Set or read the payload mass. | `python src/payload.py --mass 1.5` |
@@ -153,8 +153,11 @@ own control and braking.
   **Api**.
 - **Gripper force errors** — the gripper is not configured or not powered. Check the
   gripper configuration and wiring in the robot UI.
-- **Do not guess I/O pin names** — read the current I/O state first to see the real pin
-  names before setting anything.
+- **I/O writes take the pin's full name, not a number** — read the current I/O state
+  first, then `--set "<pin>=<value>"` using the exact key and value shown (e.g.
+  `--set "Output 1=high"`, not `--set 1=1`). Quote each pair, since pin names have spaces.
+- **A routine won't play / "not found"** — `--routine-id` needs the id string from
+  `python src/run_routine.py` (e.g. `routine_0b0...`), not the routine name in the UI.
 - **Numbers must be floats** — pass `z=0.0`, not `z=0`. Integer values where a float is
   expected will be rejected.
 

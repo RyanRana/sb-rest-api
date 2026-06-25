@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """List saved routines and optionally play one by id.
 
-Run:
-    python src/run_routine.py
-    python src/run_routine.py --routine-id <id> --var speed=fast --var count=3
+Two steps:
+    1. List every routine with its id (no arguments):
+           python src/run_routine.py
+    2. Play one by its id -- copy the id STRING from step 1, not the name:
+           python src/run_routine.py --routine-id <id-from-step-1> --live
+
+--routine-id takes the opaque id string (e.g. routine_0b0...), NOT the
+human-readable routine name shown in the robot UI. Pass runtime variables with
+a separate --var per variable (e.g. --var speed=fast --var count=3); a bare
+"key=value" without --var is not accepted.
 
 Tutorial use case C: run a saved routine (built in the robot UI's Routine Editor)
 from the REST API, passing in any runtime variables it expects.
@@ -24,14 +31,17 @@ def main() -> None:
         "--routine-id",
         dest="routine_id",
         default=None,
-        help="Id of the routine to play. Omit to just list routines and their ids.",
+        help="Id of the routine to play -- the id STRING from the listing "
+        "(e.g. routine_0b0...), NOT the routine name. Omit to just list "
+        "routines and their ids.",
     )
     parser.add_argument(
         "--var",
         dest="var",
         action="append",
         default=None,
-        help='Runtime variable as "key=value". Repeatable, e.g. --var speed=fast --var count=3.',
+        help='Runtime variable as "key=value", with a separate --var for each '
+        '(repeatable), e.g. --var speed=fast --var count=3.',
     )
     args = parser.parse_args()
 
@@ -40,14 +50,15 @@ def main() -> None:
         # Running a saved routine does NOT need take-control / unbrake: the
         # routine itself owns brake management while it runs.
 
-        # Always show what routines exist, with their ids, so you know what to pass.
+        # Always show what routines exist, with their ids, so you know what to
+        # pass. The id and the name are DIFFERENT -- --routine-id needs the id.
         listing = sdk.routine_editor.routines.list(limit=100, offset=0).ok()
-        print("Saved routines:")
+        print("Saved routines (pass the id to --routine-id, NOT the name):")
         for item in listing.items:
-            print(f"  {item.id}  {item.name}")
+            print(f"  id={item.id}   name={item.name!r}")
 
         if not args.routine_id:
-            print("\nPass --routine-id <id> (from the list above) to play one.")
+            print("\nPass --routine-id <id> (the id= value above, not the name) to play one.")
             return
 
         # Build the variables dict from any --var "key=value" entries.

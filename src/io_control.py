@@ -2,9 +2,13 @@
 """Read the robot's I/O state, and optionally write one or more output pins.
 
 Run:
-    python src/io_control.py                          # read-only: list all pins
-    python src/io_control.py --set pin=value          # write one pin, then re-read
-    python src/io_control.py --set a=high --set b=low  # write several pins
+    python src/io_control.py                              # read-only: list all pins
+    python src/io_control.py --set "Output 1=high"        # set one output, then re-read
+    python src/io_control.py --set "Output 1=high" --set "Output 2=low"  # several
+
+The --set key is the EXACT pin name from the read (e.g. "Output 1"), NOT a pin
+number, and the value is the string the read shows ("high"/"low"), NOT 1/0.
+Quote each "pin=value" because pin names contain a space.
 
 Tutorial use case E: read & write I/O. Writing flips PHYSICAL outputs on the
 robot, so this script keeps the simulator default -- pass --live only when you
@@ -27,9 +31,10 @@ def main() -> None:
         dest="set",
         action="append",
         default=None,
-        metavar="pin=value",
-        help="Output pin to write as pin=value (repeatable). Use the EXACT pin "
-        "key and value string shown by a read-only run first.",
+        metavar='"pin=value"',
+        help='Output pin to write as "pin=value" (repeatable; quote it -- pin '
+        'names contain spaces). Use the EXACT pin key and value string from a '
+        'read-only run, e.g. --set "Output 1=high"  (NOT --set 1=1).',
     )
     args = parser.parse_args()
 
@@ -43,6 +48,10 @@ def main() -> None:
             print(f"  {pin} = {value}")
 
         if not args.set:
+            print(
+                '\nTo set an output, pass --set "<pin>=<value>" using a pin key '
+                'and value exactly as listed above, e.g. --set "Output 1=high".'
+            )
             return
 
         # Build a dict of just the pins to change. Writing I/O does not move the

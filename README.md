@@ -45,7 +45,9 @@ git clone https://github.com/standardbots/sb-rest-api.git
 cd sb-rest-api
 ```
 
-Create a virtual environment and install the SDK. Either run the steps manually:
+Create a virtual environment and install the SDK using the commands for your OS.
+
+**macOS / Linux**
 
 ```bash
 python3 -m venv .venv
@@ -54,16 +56,36 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-...or let the Makefile do it:
+...or let the Makefile run those steps for you (macOS / Linux only):
 
 ```bash
 make setup
 ```
 
-Then create your `.env` and fill in your robot's URL and token:
+**Windows (PowerShell)**
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If PowerShell blocks the activate script ("running scripts is disabled on this system"),
+allow it for the current session and run the activate line again:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -Bypass
+```
+
+On the classic Command Prompt, activate with `.venv\Scripts\activate.bat` instead. The
+`make setup` shortcut is macOS / Linux only.
+
+Then create your `.env` and fill in your robot's URL and token (`cp` on macOS / Linux,
+`copy` on Windows):
 
 ```bash
-cp .env.example .env
+cp .env.example .env       # Windows: copy .env.example .env
 # edit .env and set ROBOT_URL and ROBOT_TOKEN
 ```
 

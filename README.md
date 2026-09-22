@@ -131,6 +131,16 @@ Add `--live` to any of these to run against the real robot, for example:
 python src/move_to_pose.py --up 0.05 --live
 ```
 
+### Writing Spaces (unsupported)
+
+`spaces.py` can only read Spaces — the REST API has no create, update or delete
+for them. `src/spaces_ws.py` writes them anyway, over the same undocumented
+socket.io service the robot UI uses, so pallets and meshes can be created from
+the CLI. It is reverse-engineered, is not a supported interface, and can break
+on any robot software update; it needs `pip install 'python-socketio[client]'`
+and ignores `--live` (there is no simulator behind it). See
+[docs/websocket-spaces.md](docs/websocket-spaces.md).
+
 ## The control surface
 
 The SDK groups calls by function, and each group maps 1:1 onto the REST routes

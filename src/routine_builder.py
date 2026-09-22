@@ -47,26 +47,35 @@ def pose(x: float, y: float, z: float,
     return {"x": x, "y": y, "z": z, "i": i, "j": j, "k": k, "w": w}
 
 
-def waypoint(description: str, target_pose: Pose, joint_angles: JointAngles,
+def waypoint(description: str, target_pose: Pose,
+             joint_angles: JointAngles | None = None,
              *, motion: str = "joint", stop_here: bool = True,
-             blend_radius: float = 0.0, match_joint_angles: bool = True,
-             tcp: str = "wrist", pallet_base_id: str | None = None) -> Node:
+             blend_radius: float = 0.0, match_joint_angles: bool | None = None,
+             tcp: str = "wrist", pallet_base_id: str | None = None,
+             position_list_id: str | None = None) -> Node:
     """A Waypoint step.
 
-    `match_joint_angles` is the one that matters: with it the arm goes to this
-    exact configuration, instead of the controller re-solving IK and picking a
-    different elbow. Leave it on for anything taught.
+    Pass `joint_angles` for a TAUGHT point and the arm goes to that exact
+    configuration. Leave them out for a COMPUTED pose and the controller's
+    planner solves IK itself -- there is no IK endpoint to do it beforehand,
+    and solving it inside the planner is what keeps the result collision-aware.
+    `match_joint_angles` defaults to whether joint angles were supplied.
 
     `motion` is "joint" or "line". Joint plans reliably; line traces a straight
     cartesian path and is what you want for a short approach or retreat.
 
-    `pallet_base_id` binds the step to a palletBase space item, which is how
-    native palletizing indexes through a pattern.
+    `position_list_id` points the step at a palletBoxes item, so it indexes
+    through a pattern instead of going to one pose; `pallet_base_id` names the
+    palletBase that pattern sits on.
     """
     if motion not in ("joint", "line"):
         raise ValueError(f"motion must be 'joint' or 'line', got {motion!r}")
-    if len(joint_angles) != 6:
+    if joint_angles is not None and len(joint_angles) != 6:
         raise ValueError(f"need 6 joint angles, got {len(joint_angles)}")
+    if match_joint_angles is None:
+        match_joint_angles = joint_angles is not None
+    if match_joint_angles and joint_angles is None:
+        raise ValueError("match_joint_angles needs joint_angles to match")
 
     # The robot stores a whole radius as an int; match it so a round-trip
     # compares equal.
@@ -77,20 +86,21 @@ def waypoint(description: str, target_pose: Pose, joint_angles: JointAngles,
     if pallet_base_id:
         pallet_config["selectedPalletBaseID"] = pallet_base_id
 
+    target = {"pose": dict(target_pose), "tcpOption": tcp,
+              "jointAngles": list(joint_angles) if joint_angles else None}
     return Node("Waypoint", {
-        "target": {"pose": dict(target_pose), "tcpOption": tcp,
-                   "jointAngles": list(joint_angles)},
+        "target": target,
         "stopHere": stop_here,
         "stopHereRaw": stop_here,
         "tcpOption": "auto",
         "motionKind": motion,
         "motionKindRaw": motion,
-        "targetKind": "singlePosition",
+        "targetKind": "positionList" if position_list_id else "singlePosition",
         "blendConfig": {"kind": "blendRadius", "radius": blend_radius},
         "argumentKind": "Waypoint",
         "distanceUnit": "meter",
         "palletConfig": pallet_config,
-        "positionListID": None,
+        "positionListID": position_list_id,
         "relativeConfig": {"frame": "base", "targetKind": "singlePosition"},
         "speedLimitOption": "PARENT_DEFAULTS",
         "stopEarlyConditions": "",
@@ -112,6 +122,77 @@ def from_taught(space_item: dict, description: str = "", **kwargs) -> Node:
     return waypoint(description or space_item.get("name", ""),
                     first["pose"], first["jointAngles"],
                     tcp=first.get("tcpOption", "wrist"), **kwargs)
+
+
+def box_type(name: str, length_mm: float, width_mm: float, height_mm: float,
+             *, weight_kg: float = 1.0, pickup_pose: Pose | None = None,
+             pickup_joints: JointAngles | None = None) -> dict:
+    """One SKU in a pallet pattern. `depth` runs along +X, `width` along +Y."""
+    entry = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "depth": round(length_mm),
+        "width": round(width_mm),
+        "height": round(height_mm),
+        "weight": weight_kg,
+    }
+    if pickup_pose is not None:
+        entry["pickupPosition"] = {
+            "pose": dict(pickup_pose), "tcpOption": "wrist",
+            "jointAngles": list(pickup_joints) if pickup_joints else None}
+    return entry
+
+
+def layer_pattern(name: str, box_type_id: str, slots: list[dict],
+                  *, approach_direction_deg: int = 315,
+                  automatic_sequencing: bool = False) -> dict:
+    """One layer: where each box sits on the pallet.
+
+    A slot is {x, y} in millimetres from the pallet corner, optionally with
+    `rotation` (degrees) and `approach_direction` (degrees; the heading the
+    tool comes in from, which is what stops it entering through a wall).
+    Order follows the list.
+    """
+    return {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "boxTypeID": box_type_id,
+        "boxList": [{
+            "id": str(uuid.uuid4()),
+            "x": round(slot["x"]),
+            "y": round(slot["y"]),
+            "order": index,
+            "rotation": slot.get("rotation", 0),
+            "approachDirection": slot.get("approach_direction", 0),
+        } for index, slot in enumerate(slots, start=1)],
+        "automaticSequencing": automatic_sequencing,
+        "globalApproachDirection": approach_direction_deg,
+    }
+
+
+def pallet_boxes(name: str, pallet_base_id: str, box_types: list[dict],
+                 patterns: list[dict], *, approach_z_mm: float = 0.0,
+                 approach_xy_mm: float = 100.0, global_space: bool = True) -> dict:
+    """A palletBoxes space item -- the pattern a Waypoint indexes through.
+
+    `approach_z_mm` and `approach_xy_mm` are the clearance the arm keeps on the
+    way in and out of each slot. They are why this path does not need a
+    hand-built hover waypoint per box.
+    """
+    return {
+        "id": str(uuid.uuid4()),
+        "kind": "palletBoxes",
+        "name": name,
+        "global": global_space,
+        "description": "generated from the CLI",
+        "boxTypes": list(box_types),
+        "positions": [],
+        "layerPatterns": list(patterns),
+        "layerOrder": [pattern["id"] for pattern in patterns],
+        "palletBaseIDs": [pallet_base_id],
+        "approachDistanceZMM": round(approach_z_mm),
+        "approachDistanceXYMM": round(approach_xy_mm),
+    }
 
 
 def move_arm(children: list[Node], *, speed_percent: int = 100) -> Node:
@@ -157,6 +238,25 @@ def build(name: str, roots: list[Node], *, space: list | None = None,
         "space": list(space or []),
         "environmentVariables": [],
     }
+
+
+def grid_slots(pallet_l_mm: float, pallet_w_mm: float,
+               box_l_mm: float, box_w_mm: float,
+               *, gap_mm: float = 0.0) -> list[dict]:
+    """Fill a pallet with a simple grid of slots, row-major from the corner.
+
+    A placeholder for a real packing solver: swap this for whatever decides
+    which SKU goes where, and feed the result to `layer_pattern`.
+    """
+    slots = []
+    y = 0.0
+    while y + box_w_mm <= pallet_w_mm:
+        x = 0.0
+        while x + box_l_mm <= pallet_l_mm:
+            slots.append({"x": x, "y": y})
+            x += box_l_mm + gap_mm
+        y += box_w_mm + gap_mm
+    return slots
 
 
 def pick_and_place(name: str, pick: Node, place: Node,

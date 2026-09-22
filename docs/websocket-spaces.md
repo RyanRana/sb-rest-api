@@ -190,6 +190,43 @@ indistinguishable from a UI-authored one: it appears in
 `GET /routine-editor/routines/{id}/spaces`, and it runs on `motionPlanner:
 "ROS2"` like any other.
 
+### Computed poses, and why there is no IK call
+
+The poses API is forward kinematics and pose arithmetic only --
+`/poses/joint-pose` turns joint angles into a cartesian pose, not the other way
+round, and `/poses/cartesian-offset` offsets from the robot's *current* pose.
+There is no pose-to-joint-angles endpoint anywhere in the API.
+
+You do not need one. A Waypoint accepts a pose with `jointAngles: null` and
+`shouldMatchJointAngles: false`, and the controller's planner solves IK itself
+at plan time -- which is the point, because solving it there keeps the result
+collision-aware. So:
+
+- **taught** point -> pass `joint_angles`, get that exact arm configuration back
+  every cycle;
+- **computed** pose -> omit them, and let the planner choose.
+
+### Native palletizing
+
+A `palletBoxes` space item is a pattern, and a Waypoint with
+`targetKind: "positionList"` indexes through it:
+
+```python
+base    = pallet_base("pallet", 1219, 1016, 120, corner_x_mm=-1450, corner_y_mm=300)
+btype   = box_type("carton", 457, 305, 254, pickup_pose=…, pickup_joints=…)
+pattern = layer_pattern("Layer A", btype["id"],
+                        [{"x": 0, "y": 0, "approach_direction": 0}, …])
+boxes   = pallet_boxes("pattern", base["id"], [btype], [pattern],
+                       approach_z_mm=150, approach_xy_mm=100)
+place   = waypoint("Place", pose, position_list_id=boxes["id"],
+                   pallet_base_id=base["id"])
+```
+
+`approachDistanceZMM` and `approachDistanceXYMM` are the clearance kept on the
+way into and out of every slot, and each slot carries its own
+`approachDirection` -- so the entry path is declared, not hand-built out of
+hover waypoints. `build-pallet-routine` wires all of it from the CLI.
+
 Two things the server requires that are easy to miss: `createdByID` is NOT NULL
 and is not filled in for you (the client takes it from the token's `sub`), and
 `steps` ids must match the `stepConfigurations` keys exactly.

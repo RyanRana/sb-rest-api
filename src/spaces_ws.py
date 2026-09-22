@@ -528,6 +528,35 @@ def main() -> None:
     ap_gr.add_argument("--dry-run", action="store_true",
                        help="Print the document instead of creating it.")
 
+    ap_pr = sub.add_parser(
+        "build-pallet-routine",
+        help="Generate a native palletizing routine: a palletBase, a "
+             "palletBoxes pattern over it, and a routine that indexes through "
+             "the slots.")
+    ap_pr.add_argument("--name", required=True)
+    ap_pr.add_argument("--pick", required=True,
+                       help="Taught singlePosition to pick from.")
+    ap_pr.add_argument("--apex", default=None,
+                       help="Taught clearance position between pick and place.")
+    ap_pr.add_argument("--pallet-length", type=float, default=48.0,
+                       help="Pallet length along +X, in INCHES (default 48).")
+    ap_pr.add_argument("--pallet-width", type=float, default=40.0,
+                       help="Pallet width along +Y, in INCHES (default 40).")
+    ap_pr.add_argument("--corner-x", type=float, required=True,
+                       help="Pallet corner X in METRES.")
+    ap_pr.add_argument("--corner-y", type=float, required=True,
+                       help="Pallet corner Y in METRES.")
+    ap_pr.add_argument("--box", nargs=3, type=float, required=True,
+                       metavar=("L", "W", "H"), help="Box size in INCHES.")
+    ap_pr.add_argument("--gap", type=float, default=0.0,
+                       help="Gap between boxes, in INCHES (default 0).")
+    ap_pr.add_argument("--approach-z", type=float, default=6.0,
+                       help="Clearance above each slot, in INCHES (default 6).")
+    ap_pr.add_argument("--approach-xy", type=float, default=4.0,
+                       help="Lateral clearance into each slot, in INCHES "
+                            "(default 4).")
+    ap_pr.add_argument("--dry-run", action="store_true")
+
     ap_rb = sub.add_parser(
         "backup-routines",
         help="Save every routine's FULL document to a JSON file. Do this "
@@ -665,6 +694,59 @@ def main() -> None:
             else:
                 data = client.create_routine(doc)
                 print(f"created routine {args.name!r} -> {data.get('id')}")
+                print("Open it in the robot UI to review before running it.")
+
+        elif args.cmd == "build-pallet-routine":
+            import json as _json
+            import routine_builder as rb
+
+            taught = {r["item"]["name"]: r["item"] for r in client.list()
+                      if r["item"]["kind"] == "singlePosition"}
+            missing = [n for n in (args.pick, args.apex) if n and n not in taught]
+            if missing:
+                sys.exit(f"no taught position named {', '.join(missing)}. "
+                         f"Have: {', '.join(sorted(taught)) or '(none)'}.")
+
+            box_l, box_w, box_h = (v * IN_TO_MM for v in args.box)
+            pallet_l = args.pallet_length * IN_TO_MM
+            pallet_w = args.pallet_width * IN_TO_MM
+            base = pallet_base("%s_pallet" % args.name, pallet_l, pallet_w,
+                               4.75 * IN_TO_MM,
+                               args.corner_x * M_TO_MM, args.corner_y * M_TO_MM)
+            picked = taught[args.pick]["positions"][0]
+            btype = rb.box_type("%s_box" % args.name, box_l, box_w, box_h,
+                                pickup_pose=picked["pose"],
+                                pickup_joints=picked["jointAngles"])
+            slots = rb.grid_slots(pallet_l, pallet_w, box_l, box_w,
+                                  gap_mm=args.gap * IN_TO_MM)
+            if not slots:
+                sys.exit("no slots fit -- the box is larger than the pallet.")
+            pattern = rb.layer_pattern("Layer A", btype["id"], slots)
+            boxes = rb.pallet_boxes(
+                "%s_pattern" % args.name, base["id"], [btype], [pattern],
+                approach_z_mm=args.approach_z * IN_TO_MM,
+                approach_xy_mm=args.approach_xy * IN_TO_MM,
+                global_space=False)
+
+            sequence = [rb.from_taught(taught[args.pick], "Pick")]
+            if args.apex:
+                sequence.append(rb.from_taught(taught[args.apex], "Apex"))
+            sequence.append(rb.waypoint(
+                "Place into pattern", picked["pose"],
+                position_list_id=boxes["id"], pallet_base_id=base["id"]))
+
+            space = [taught[args.pick]] + \
+                    ([taught[args.apex]] if args.apex else []) + [base, boxes]
+            doc = rb.build(args.name, [rb.loop([rb.move_arm(sequence)])],
+                           space=space)
+            if args.dry_run:
+                print(_json.dumps(doc, indent=2))
+            else:
+                data = client.create_routine(doc)
+                print(f"created routine {args.name!r} -> {data.get('id')}")
+                print(f"  {len(slots)} slot(s), {args.box[0]:g}x{args.box[1]:g}"
+                      f"x{args.box[2]:g} in on a "
+                      f"{args.pallet_length:g}x{args.pallet_width:g} in pallet")
                 print("Open it in the robot UI to review before running it.")
 
         elif args.cmd == "backup-routines":

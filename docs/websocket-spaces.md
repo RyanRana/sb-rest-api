@@ -127,6 +127,30 @@ wrapped as `{ spaceItem: { … } }` with a fresh `id` (a UUID). Other kinds seen
 in the bundle: `customBase`, `DHBase`, `singlePosition`, and planes (a separate
 `plane` service); those are not implemented here.
 
+## Taught positions
+
+A `singlePosition` stores a pose **and** the `jointAngles` that reached it:
+
+```json
+{"kind": "singlePosition", "name": "Anti_collision",
+ "positions": [{"pose": {"x": …, "y": …, "z": …, "i": …, "j": …, "k": …, "w": …},
+                "tcpOption": "wrist", "jointAngles": [6 floats]}]}
+```
+
+The joint angles are the point. A routine move step with `shouldMatchJointAngles`
+goes to that exact arm configuration rather than re-solving IK and picking a
+different elbow, which is what makes taught motion repeatable.
+
+`teach` captures the arm's current pose and joint rotations into one of these,
+the same thing the UI's teach button does:
+
+```bash
+python src/spaces_ws.py teach --name apex_over_carton
+```
+
+It reads `GET /api/v1/movement/position/arm` for the joint angles, so it needs
+the REST token (`ROBOT_TOKEN`) as well as the socket auth.
+
 ## Drawing real geometry
 
 `palletBase` renders as a parametric footprint — fine for pallets, not for a

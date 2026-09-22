@@ -191,6 +191,47 @@ import base64  # noqa: E402
 import struct  # noqa: E402
 
 
+
+def single_position(name: str, x_m: float, y_m: float, z_m: float,
+                    quat_ijkw: tuple, joint_angles: list,
+                    tcp_option: str = "wrist") -> dict:
+    """A taught singlePosition: a pose AND the joint angles that reached it.
+
+    The joint angles are what make a taught point deterministic -- a move step
+    with `shouldMatchJointAngles` goes to this exact arm configuration instead
+    of letting the controller re-solve IK and pick a different elbow.
+    """
+    i, j, k, w = quat_ijkw
+    return {
+        "id": str(uuid.uuid4()),
+        "kind": "singlePosition",
+        "name": name,
+        "global": True,
+        "description": "taught from the CLI",
+        "positions": [{
+            "pose": {"x": x_m, "y": y_m, "z": z_m, "i": i, "j": j, "k": k, "w": w},
+            "tcpOption": tcp_option,
+            "jointAngles": list(joint_angles),
+        }],
+    }
+
+
+def read_arm_position(url: str, token: str) -> tuple:
+    """Current tooltip pose and joint rotations, via REST."""
+    import json as _json
+    import urllib.request
+
+    req = urllib.request.Request(
+        url.rstrip("/") + "/api/v1/movement/position/arm",
+        headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        data = _json.load(resp)
+    tip = data["tooltip_position"]
+    pos, quat = tip["position"], tip["orientation"]["quaternion"]
+    return ((pos["x"], pos["y"], pos["z"]),
+            (quat["x"], quat["y"], quat["z"], quat["w"]),
+            data["joint_rotations"])
+
 # -- meshes (environmentObject) --------------------------------------------
 #
 # `environmentObject` carries a `fileURL`, and the visualizer's three.js loaders
@@ -425,6 +466,16 @@ def main() -> None:
                         help="Pallet deck offset from floor, in METRES.")
     ap_add.add_argument("--yaw", type=float, default=0.0, help="Yaw in degrees.")
 
+    ap_tc = sub.add_parser(
+        "teach",
+        help="Save the arm's CURRENT pose and joint angles as a taught "
+             "singlePosition, as the UI's teach button does.")
+    ap_tc.add_argument("--name", required=True)
+    ap_tc.add_argument("--token", default=None,
+                       help="REST bearer token (or ROBOT_TOKEN); needed to read "
+                            "the arm's position.")
+    ap_tc.add_argument("--tcp", default="wrist", choices=["wrist", "tool"])
+
     ap_rm = sub.add_parser("remove", help="Remove a space item by id.")
     ap_rm.add_argument("space_id")
 
@@ -496,6 +547,17 @@ def main() -> None:
             print(f"created palletBase {item['name']!r} (id {item['id']})")
             print("Re-open the robot visualizer to see it. Remove with:")
             print(f"  python src/spaces_ws.py remove {item['id']}")
+
+        elif args.cmd == "teach":
+            token = args.token or os.environ.get("ROBOT_TOKEN")
+            if not token:
+                sys.exit("teach needs the REST token: --token or ROBOT_TOKEN.")
+            (x, y, z), quat, joints = read_arm_position(url, token)
+            item = single_position(args.name, x, y, z, quat, joints,
+                                   tcp_option=args.tcp)
+            client.create(item)
+            print(f"taught {args.name!r} at ({x:.3f}, {y:.3f}, {z:.3f}) m")
+            print(f"  joints: {[round(j, 4) for j in joints]}")
 
         elif args.cmd == "remove":
             client.remove(args.space_id)

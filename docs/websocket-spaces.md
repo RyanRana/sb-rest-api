@@ -170,6 +170,30 @@ A `Waypoint`'s args carry `target` (pose + `jointAngles`), `motionKind`
 (`joint`/`line`), `blendConfig`, `shouldMatchJointAngles` and `palletConfig` --
 where `selectedPalletBaseID` binds the step to a `palletBase` space item.
 
+### Generating one
+
+`routine_builder.py` turns waypoints into the `steps` / `stepConfigurations`
+pair, and `build-routine` wires it to taught positions:
+
+```bash
+python src/spaces_ws.py teach --name pick_over_infeed
+python src/spaces_ws.py teach --name apex_over_rim
+python src/spaces_ws.py teach --name place_in_carton
+python src/spaces_ws.py build-routine --name "Order 41" \
+    --pick pick_over_infeed --apex apex_over_rim --place place_in_carton --dry-run
+```
+
+It emits `Loop > MoveArmToV2 > Waypoint*`, each waypoint carrying its taught
+`jointAngles` with `shouldMatchJointAngles` on. A generated routine is
+indistinguishable from a UI-authored one: it appears in
+`GET /routine-editor/routines`, its spaces read back through
+`GET /routine-editor/routines/{id}/spaces`, and it runs on `motionPlanner:
+"ROS2"` like any other.
+
+Two things the server requires that are easy to miss: `createdByID` is NOT NULL
+and is not filled in for you (the client takes it from the token's `sub`), and
+`steps` ids must match the `stepConfigurations` keys exactly.
+
 `backup-routines` saves every document; `restore-routines` re-creates them
 under **new ids**, so a restore never overwrites what is on the robot. Both
 round-trip exactly: `steps`, `stepConfigurations` and `space` come back

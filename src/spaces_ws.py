@@ -162,7 +162,20 @@ class SpacesClient:
             raise RuntimeError(f"find routines failed: {err}")
         return data.get("data", data) if isinstance(data, dict) else data
 
+    @property
+    def user_id(self) -> str:
+        """The authenticated user, from the token's `sub` -- what a routine
+        stores as createdByID. The column is NOT NULL and the server does not
+        fill it, so a create without it is rejected."""
+        import base64
+        import json as _json
+        payload = self._jwt.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return _json.loads(base64.urlsafe_b64decode(payload))["sub"]
+
     def create_routine(self, doc: dict) -> dict:
+        doc = {**doc}
+        doc.setdefault("createdByID", self.user_id)
         err, data = self._call("create", "routines", doc, timeout=40)
         if err is not None:
             raise RuntimeError(f"create routine failed: {err}")
@@ -498,6 +511,23 @@ def main() -> None:
     ap_rm = sub.add_parser("remove", help="Remove a space item by id.")
     ap_rm.add_argument("space_id")
 
+    ap_gr = sub.add_parser(
+        "build-routine",
+        help="Generate a pick/apex/place routine from taught singlePositions "
+             "and create it on the robot.")
+    ap_gr.add_argument("--name", required=True, help="Name for the new routine.")
+    ap_gr.add_argument("--pick", required=True,
+                       help="Name of the taught singlePosition to pick from.")
+    ap_gr.add_argument("--place", required=True,
+                       help="Name of the taught singlePosition to place at.")
+    ap_gr.add_argument("--apex", default=None,
+                       help="Clearance position passed through between the two. "
+                            "Teach it above the carton rim.")
+    ap_gr.add_argument("--times", type=int, default=None,
+                       help="Loop count (default: loop forever).")
+    ap_gr.add_argument("--dry-run", action="store_true",
+                       help="Print the document instead of creating it.")
+
     ap_rb = sub.add_parser(
         "backup-routines",
         help="Save every routine's FULL document to a JSON file. Do this "
@@ -608,6 +638,34 @@ def main() -> None:
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
             _json.dump(items, open(out, "w"), indent=2)
             print(f"backed up {len(items)} item(s) -> {out}")
+
+        elif args.cmd == "build-routine":
+            import json as _json
+            from routine_builder import from_taught, pick_and_place
+
+            taught = {r["item"]["name"]: r["item"] for r in client.list()
+                      if r["item"]["kind"] == "singlePosition"}
+            missing = [n for n in (args.pick, args.place, args.apex)
+                       if n and n not in taught]
+            if missing:
+                sys.exit(f"no taught position named {', '.join(missing)}. "
+                         f"Have: {', '.join(sorted(taught)) or '(none)'}. "
+                         f"Teach one with `spaces_ws.py teach`.")
+            used = [args.pick, args.place] + ([args.apex] if args.apex else [])
+            doc = pick_and_place(
+                args.name,
+                pick=from_taught(taught[args.pick], "Pick"),
+                place=from_taught(taught[args.place], "Place"),
+                apex=from_taught(taught[args.apex], "Apex") if args.apex else None,
+                times=args.times,
+                space=[taught[n] for n in used],
+            )
+            if args.dry_run:
+                print(_json.dumps(doc, indent=2))
+            else:
+                data = client.create_routine(doc)
+                print(f"created routine {args.name!r} -> {data.get('id')}")
+                print("Open it in the robot UI to review before running it.")
 
         elif args.cmd == "backup-routines":
             import datetime

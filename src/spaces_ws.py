@@ -155,6 +155,25 @@ class SpacesClient:
             raise RuntimeError(f"remove failed: {err}")
         return data
 
+    def routines(self) -> list[dict]:
+        """Full routine documents -- steps, stepConfigurations, space, the lot."""
+        err, data = self._call("find", "routines", {}, timeout=40)
+        if err is not None:
+            raise RuntimeError(f"find routines failed: {err}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def create_routine(self, doc: dict) -> dict:
+        err, data = self._call("create", "routines", doc, timeout=40)
+        if err is not None:
+            raise RuntimeError(f"create routine failed: {err}")
+        return data
+
+    def remove_routine(self, routine_id: str) -> dict:
+        err, data = self._call("remove", "routines", routine_id, timeout=40)
+        if err is not None:
+            raise RuntimeError(f"remove routine failed: {err}")
+        return data
+
     def patch(self, record_id: str, changes: dict) -> dict:
         """Feathers patch on a globalSpace record (keyed by the record id)."""
         err, data = self._call("patch", "globalSpace", record_id, changes)
@@ -479,6 +498,23 @@ def main() -> None:
     ap_rm = sub.add_parser("remove", help="Remove a space item by id.")
     ap_rm.add_argument("space_id")
 
+    ap_rb = sub.add_parser(
+        "backup-routines",
+        help="Save every routine's FULL document to a JSON file. Do this "
+             "before touching stepConfigurations.")
+    ap_rb.add_argument("--out", default=None,
+                       help="Path (default: backups/routines_<timestamp>.json).")
+
+    ap_rr = sub.add_parser(
+        "restore-routines",
+        help="Re-create routines from a backup-routines file. They come back "
+             "under new ids, so this never overwrites what is on the robot.")
+    ap_rr.add_argument("file")
+    ap_rr.add_argument("--only", default=None,
+                       help="Restore just the routine with this name.")
+    ap_rr.add_argument("--suffix", default="",
+                       help="Append this to each restored routine's name.")
+
     ap_bk = sub.add_parser("backup", help="Save all space items to a JSON file.")
     ap_bk.add_argument("--out", default=None,
                        help="Path (default: backups/spaces_<timestamp>.json).")
@@ -572,6 +608,36 @@ def main() -> None:
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
             _json.dump(items, open(out, "w"), indent=2)
             print(f"backed up {len(items)} item(s) -> {out}")
+
+        elif args.cmd == "backup-routines":
+            import datetime
+            import json as _json
+            rows = client.routines()
+            out = args.out or (
+                f"backups/routines_{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+            _json.dump(rows, open(out, "w"), indent=2)
+            for r in rows:
+                print(f"  {r['name']:<20} steps={len(r.get('steps') or {})} "
+                      f"stepConfigurations={len(r.get('stepConfigurations') or {})} "
+                      f"spaces={len(r.get('space') or [])}")
+            print(f"\nbacked up {len(rows)} routine(s) -> {out}")
+
+        elif args.cmd == "restore-routines":
+            import json as _json
+            docs = _json.load(open(args.file))
+            if args.only:
+                docs = [d for d in docs if d["name"] == args.only]
+                if not docs:
+                    sys.exit(f"no routine named {args.only!r} in {args.file}")
+            for doc in docs:
+                doc = {k: v for k, v in doc.items()
+                       if k not in ("id", "createdAt", "updatedAt",
+                                    "configurationUpdatedAt")}
+                doc["name"] = doc["name"] + args.suffix
+                data = client.create_routine(doc)
+                print(f"restored {doc['name']!r} -> {data.get('id')}")
+            print(f"\nrestored {len(docs)} routine(s) from {args.file}")
 
         elif args.cmd == "restore":
             import json as _json

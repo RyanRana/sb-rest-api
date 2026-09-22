@@ -151,6 +151,35 @@ python src/spaces_ws.py teach --name apex_over_carton
 It reads `GET /api/v1/movement/position/arm` for the joint angles, so it needs
 the REST token (`ROBOT_TOKEN`) as well as the socket auth.
 
+## Routines
+
+The `routines` service carries the whole routine document, which REST does not
+expose -- `GET /routine-editor/routines/{id}` returns only `id` and `name`.
+
+```json
+{"name": "Packing demo", "motionPlanner": "ROS2",
+ "steps": [{"id": …, "stepKind": "Loop", "steps": [
+              {"id": …, "stepKind": "MoveArmToV2", "steps": [
+                 {"id": …, "stepKind": "Waypoint"}, …]}]}],
+ "stepConfigurations": {"<stepId>": {"args": {…}, "description": "Pick"}},
+ "space": [ …space items… ]}
+```
+
+`steps` is a tree of ids; `stepConfigurations` maps each id to its arguments.
+A `Waypoint`'s args carry `target` (pose + `jointAngles`), `motionKind`
+(`joint`/`line`), `blendConfig`, `shouldMatchJointAngles` and `palletConfig` --
+where `selectedPalletBaseID` binds the step to a `palletBase` space item.
+
+`backup-routines` saves every document; `restore-routines` re-creates them
+under **new ids**, so a restore never overwrites what is on the robot. Both
+round-trip exactly: `steps`, `stepConfigurations` and `space` come back
+byte-identical (verified against a live robot).
+
+```bash
+python src/spaces_ws.py backup-routines
+python src/spaces_ws.py restore-routines backups/routines_<ts>.json --only "Packing demo"
+```
+
 ## Drawing real geometry
 
 `palletBase` renders as a parametric footprint — fine for pallets, not for a

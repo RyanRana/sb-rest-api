@@ -117,6 +117,7 @@ python src/<name>.py [--url <robot-url> --token <token>] [--live]
 | `quickstart.py` | Connect and run a health check. Start here. | `python src/quickstart.py` |
 | `read_state.py` | Read TCP pose, joint angles, and health (read-only). | `python src/read_state.py` |
 | `move_to_pose.py` | Move the tool up a few cm. **Moves the arm.** | `python src/move_to_pose.py --up 0.05` |
+| `heartbeat_move.py` | A move that stops when your pings stop. **Moves the arm.** | `python src/heartbeat_move.py --up 0.05` |
 | `run_routine.py` | List, play, and monitor a saved routine. | `python src/run_routine.py` (lists ids), then `--routine-id <id>` |
 | `gripper.py` | Open/close or force-grip. **Moves the gripper.** | `python src/gripper.py --width 50 --force 20` |
 | `io_control.py` | Read I/O, optionally set pins. | `python src/io_control.py --set "Output 1=high"` |

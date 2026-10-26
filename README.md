@@ -119,6 +119,7 @@ python src/<name>.py [--url <robot-url> --token <token>] [--live]
 | `move_to_pose.py` | Move the tool up a few cm. **Moves the arm.** | `python src/move_to_pose.py --up 0.05` |
 | `run_routine.py` | List, play, and monitor a saved routine. | `python src/run_routine.py` (lists ids), then `--routine-id <id>` |
 | `gripper.py` | Open/close or force-grip. **Moves the gripper.** | `python src/gripper.py --width 50 --force 20` |
+| `grip_part.py` | Grip with any width gripper and confirm it is holding. **Moves the gripper.** | `python src/grip_part.py --width 40` |
 | `io_control.py` | Read I/O, optionally set pins. | `python src/io_control.py --set "Output 1=high"` |
 | `recover.py` | Inspect faults, optionally clear them. | `python src/recover.py --recover` |
 | `spaces.py` | List saved Spaces (waypoints) (read-only). | `python src/spaces.py` |
